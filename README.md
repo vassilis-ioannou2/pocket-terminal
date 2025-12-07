@@ -37,9 +37,8 @@ Transforms your Raspberry Pi Zero into a fully portable, self-contained Linux te
 
 1. Flash Raspberry Pi OS to your SD card.
 2. Enable SSH and connect to your Pi as user `pi`.
-3. Run the one-line installer: curl -sSL https://raw.githubusercontent.com/vassilis-ioannou2/pocket-terminal/main/install.sh | bash
-4. When the script finishes, reboot: sudo reboot
-
+3. **Run the one-line installer: `curl -sSL https://raw.githubusercontent.com/vassilis-ioannou2/pocket-terminal/main/install.sh | bash`**
+4. When the script finishes, reboot: `sudo reboot`
 
 On the next boot, pocket-terminal will start automatically on the LCD.
 
@@ -66,7 +65,7 @@ On the next boot, pocket-terminal will start automatically on the LCD.
 
 ## Commands
 
-After installation, you can manage pocket-terminal with a single command: pocket-terminal <command>
+After installation, you can manage pocket-terminal with a single command: `pocket-terminal <command>`
 
 
 Available commands:
