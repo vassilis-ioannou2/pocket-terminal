@@ -18,6 +18,7 @@ mkdir -p ~/terminal
 
 # Copy Waveshare library files
 cp ~/1.44inch-LCD-HAT-Code/RaspberryPi/python/LCD_1in44.py ~/terminal/
+cp ~/1.44inch-LCD-HAT-Code/RaspberryPi/python/config.py ~/terminal/
 cp ~/1.44inch-LCD-HAT-Code/RaspberryPi/python/config.py ~/terminal/LCD_Config.py
 
 # Clone the repo for easy updates
