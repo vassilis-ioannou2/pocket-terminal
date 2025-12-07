@@ -1,11 +1,11 @@
 # pocket-terminal
 
-(image here)
+![IMG_0810](https://github.com/user-attachments/assets/27ce2a53-6780-439c-b08f-3214b2946ec8)
 
 Transforms your Raspberry Pi Zero into a fully portable, self-contained Linux terminal with a compact 1.44" LCD display and joystick controls. No external monitor, keyboard, or mouse required.
 
 - Demo video: (YouTube link here)
-- Website: (your site URL here)
+- Guide: https://vassilis.ioannou/projects/pocket-terminal.html
 
 ---
 
