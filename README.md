@@ -47,7 +47,7 @@ On the next boot, pocket-terminal will start automatically on the LCD.
 ## Controls
 
 - **Joystick**
-- Up / Down: Scroll output (in terminal mode) or move in the keyboard
+- Up / Down: Scroll terminal or move in the keyboard
 - Left / Right: Navigate command history (terminal mode) or move keyboard cursor
 - Press: Toggle on-screen keyboard
 
