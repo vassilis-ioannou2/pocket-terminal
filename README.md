@@ -4,8 +4,8 @@
 
 Transforms your Raspberry Pi Zero into a fully portable, self-contained Linux terminal with a compact 1.44" LCD display and joystick controls. No external monitor, keyboard, or mouse required.
 
-- Demo video: (YouTube link here)
-- Guide: https://vassilis.ioannou/projects/pocket-terminal.html
+- Youtube Video: (YouTube link here)
+- Website Guide: https://vassilis.ioannou/projects/pocket-terminal.html
 
 ---
 
@@ -27,7 +27,7 @@ Transforms your Raspberry Pi Zero into a fully portable, self-contained Linux te
 
 - Raspberry Pi Zero / Zero 2 (or any other Raspberry Pi)
 - Waveshare 1.44" LCD HAT (https://www.waveshare.com/wiki/1.44inch_LCD_HAT)
-- Raspberry Pi OS (Lite or full)
+- Raspberry Pi OS Lite (Normal or Legacy)
 - User **must be named `pi`** for the prompts and home-directory logic to work correctly
 - Network access for the initial install (to fetch scripts and dependencies)
 
