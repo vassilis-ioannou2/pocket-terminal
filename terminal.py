@@ -12,6 +12,7 @@ import termios
 import struct
 import fcntl
 
+# GPIO Pin definitions
 KEY_UP_PIN = 6
 KEY_DOWN_PIN = 19
 KEY_LEFT_PIN = 5
@@ -47,10 +48,12 @@ class Terminal:
 
 class PocketTerminal:
     def __init__(self):
+        # Initialize LCD
         self.LCD = LCD_1in44.LCD()
         self.LCD.LCD_Init(LCD_1in44.SCAN_DIR_DFT)
         self.LCD.LCD_Clear()
         
+        # Setup GPIO
         GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BCM)
         
@@ -70,13 +73,16 @@ class PocketTerminal:
         except:
             os.chdir("/home/pi")
         
+        # State
         self.current_screen = "menu"
         self.terminal = Terminal()
         self.menu_index = 0
         
+        # Settings
         self.brightness = 100
         self.theme = "dark"
         
+        # Theme colors
         self.themes = {
             "dark": {
                 "bg": "BLACK",
@@ -113,6 +119,7 @@ class PocketTerminal:
             }
         }
         
+        # Networking
         self.available_wlans = self.detect_wlan_interfaces()
         self.current_wlan_idx = 0
         self.wlan_enabled = {}
@@ -129,14 +136,17 @@ class PocketTerminal:
             self.wifi_networks[wlan] = []
         self.check_all_wlan_status()
         
+        # Settings menu
         self.settings_menu_index = 0
         self.in_theme_select = False
         self.theme_options = ["dark", "light", "orange"]
         self.theme_select_index = 0
         self.in_brightness_adjust = False
         
+        # System info
         self.system_info = {}
         
+        # Keyboard layouts
         self.keyboard_layouts = [
             [
                 ['a','b','c','d','e','f','g','h','i','j'],
@@ -154,13 +164,15 @@ class PocketTerminal:
         
         self.keyboard_bottom_row = ['<-','->','SPC','CAPS','BSP','CLR','MORE']
         
+        # Button tracking
         self.button_prev = {}
         self.button_time = {}
         for pin in input_pins:
             self.button_prev[pin] = GPIO.HIGH
             self.button_time[pin] = 0
         
-        self.key3_press_start = 0
+        # KEY1 for shutdown/reboot (works everywhere)
+        self.key1_press_start = 0
         self.shutdown_threshold = 5.0
         self.reboot_threshold = 0.5
         
@@ -182,7 +194,6 @@ class PocketTerminal:
         return False
     
     def detect_wlan_interfaces(self):
-        """Detect all available WLAN interfaces"""
         try:
             result = subprocess.run(['ls', '/sys/class/net/'], 
                                   capture_output=True, text=True, timeout=2)
@@ -193,13 +204,11 @@ class PocketTerminal:
             return ['wlan0']
     
     def get_current_wlan(self):
-        """Get the currently selected WLAN interface name"""
         if self.current_wlan_idx < len(self.available_wlans):
             return self.available_wlans[self.current_wlan_idx]
         return self.available_wlans[0] if self.available_wlans else 'wlan0'
     
     def check_all_wlan_status(self):
-        """Check status of all WLAN interfaces"""
         for wlan in self.available_wlans:
             try:
                 result = subprocess.run(['nmcli', 'device', 'show', wlan],
@@ -224,7 +233,6 @@ class PocketTerminal:
                 self.wifi_connected[wlan] = None
     
     def toggle_wlan(self, wlan):
-        """Toggle WiFi on/off for specific interface"""
         try:
             if self.wlan_enabled[wlan]:
                 subprocess.run(['sudo', 'nmcli', 'radio', 'wifi', 'off', 'ifname', wlan], timeout=5)
@@ -237,7 +245,6 @@ class PocketTerminal:
             pass
     
     def scan_wifi(self, wlan):
-        """Scan for WiFi networks on specific interface"""
         try:
             subprocess.run(['sudo', 'nmcli', 'device', 'wifi', 'rescan', 'ifname', wlan],
                           capture_output=True, text=True, timeout=5)
@@ -267,7 +274,6 @@ class PocketTerminal:
             self.wifi_networks[wlan] = []
     
     def connect_wifi(self, wlan, ssid, password):
-        """Connect to WiFi network"""
         try:
             subprocess.run(['sudo', 'nmcli', 'device', 'wifi', 'connect', ssid, 
                           'password', password, 'ifname', wlan], timeout=15, check=True)
@@ -277,7 +283,6 @@ class PocketTerminal:
             pass
     
     def disconnect_wifi(self, wlan):
-        """Disconnect from current WiFi network"""
         try:
             subprocess.run(['sudo', 'nmcli', 'device', 'disconnect', wlan], timeout=5)
             if self.wifi_connected[wlan]:
@@ -764,19 +769,20 @@ class PocketTerminal:
     def handle_input(self):
         current_time = time.time()
         
-        if GPIO.input(KEY3_PIN) == GPIO.LOW:
-            if self.key3_press_start == 0:
-                self.key3_press_start = current_time
-            elif current_time - self.key3_press_start >= self.shutdown_threshold:
+        # KEY1 for shutdown/reboot (WORKS EVERYWHERE)
+        if GPIO.input(KEY1_PIN) == GPIO.LOW:
+            if self.key1_press_start == 0:
+                self.key1_press_start = current_time
+            elif current_time - self.key1_press_start >= self.shutdown_threshold:
                 self.shutdown_pi()
                 return
         else:
-            if self.key3_press_start > 0:
-                press_duration = current_time - self.key3_press_start
+            if self.key1_press_start > 0:
+                press_duration = current_time - self.key1_press_start
                 if press_duration >= self.reboot_threshold and press_duration < self.shutdown_threshold:
-                    if self.current_screen == "menu":
-                        self.reboot_pi()
-                self.key3_press_start = 0
+                    self.reboot_pi()
+                    return
+                self.key1_press_start = 0
         
         if self.current_screen == "menu":
             self.handle_menu_input()
@@ -856,7 +862,6 @@ class PocketTerminal:
                 term.kb_row = 0
                 term.kb_col = 0
             else:
-                # Apply caps lock to letters only
                 if term.caps_lock and key.isalpha():
                     key = key.upper()
                 term.command_input = term.command_input[:term.cursor_pos] + key + term.command_input[term.cursor_pos:]
