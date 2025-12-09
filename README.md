@@ -19,6 +19,7 @@ Transforms your Raspberry Pi Zero into a fully portable, self-contained Linux te
 - Caps Lock toggle for uppercase input
 - Command history navigation with arrow keys
 - Scrollable terminal output
+- Custom file editing
 - Multi-WLAN WiFi management (auto-detects all wireless adapters)
 - Connect/disconnect networks with password entry per interface
 - Three visual themes: dark mode, light mode, and orange mode
