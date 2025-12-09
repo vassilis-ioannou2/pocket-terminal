@@ -13,15 +13,21 @@ Transforms your Raspberry Pi Zero into a fully portable, self-contained Linux te
 
 ## Features
 
-- Dual terminal sessions – switch between two independent terminals
-- Background process execution with visual “running” indicator
-- On-screen virtual keyboard with full character and symbol support
-- Command history navigation (left/right to browse previous commands)
-- Per-terminal state: directory, history, and output preserved per session
-- Hardware joystick + 3 buttons for full control
+- Full Linux terminal with live command output and interactive prompts
+- Multi-line command input with automatic text wrapping
+- On-screen virtual keyboard with letters, numbers, and symbols
+- Caps Lock toggle for uppercase input
+- Command history navigation with arrow keys
+- Scrollable terminal output
+- Multi-WLAN WiFi management (auto-detects all wireless adapters)
+- Connect/disconnect networks with password entry per interface
+- Three visual themes: dark mode, light mode, and orange mode
+- Adjustable screen brightness (10-100%)
+- System information display (model, temperature, firmware, uptime)
+- Hardware joystick + 3 buttons for navigation and control
+- Long-press shutdown (5 sec) and quick reboot on menu
 - Auto-start on boot via systemd service
-- One-command installation and simple update command
-- Long-press hardware shutdown for safe power-off
+- One-command installation and updates
 
 ---
 
@@ -48,20 +54,25 @@ On the next boot, pocket-terminal will start automatically on the LCD.
 
 ## Controls
 
+Controls:
+
 - **Joystick**
-- Up / Down: Scroll terminal or move in the keyboard
-- Left / Right: Navigate command history (terminal mode) or move keyboard cursor
-- Press: Toggle on-screen keyboard
+  - Up / Down: Navigate menus, scroll terminal output, or move in keyboard
+  - Left / Right: Navigate command history (terminal mode) or move keyboard cursor
+  - Press: Toggle on-screen keyboard (terminal) or open keyboard (WiFi password)
 
 - **KEY1**
-- Long press (~5 seconds): Shutdown the Pi safely
+  - Long press (~5 seconds): Shutdown the Pi safely
+  - Short press on main menu: Reboot the Pi
 
 - **KEY2**
-- Short press: Switch between Terminal 1 and Terminal 2
+  - Short press: Go back to previous menu or close keyboard
 
 - **KEY3**
-- In terminal mode: Execute current command, or stop a running command
-- In keyboard mode: “Press” the selected key (character, SPC, BSP, CLR, arrows)
+  - In menu: Open/select highlighted option
+  - In terminal mode: Execute current command
+  - In keyboard mode: Press the selected key (character, SPC, CAPS, BSP, CLR, arrows)
+  - In WiFi: Toggle interface, WiFi on/off, disconnect, or connect to network
 
 ---
 

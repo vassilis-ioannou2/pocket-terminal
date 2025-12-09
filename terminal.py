@@ -12,6 +12,7 @@ import termios
 import struct
 import fcntl
 
+# GPIO Pin definitions
 KEY_UP_PIN = 6
 KEY_DOWN_PIN = 19
 KEY_LEFT_PIN = 5
@@ -39,18 +40,30 @@ class Terminal:
         self.process = None
         self.read_thread = None
         self.caps_lock = False
+        
+        # Nano editor state
+        self.in_nano = False
+        self.nano_filename = ""
+        self.nano_lines = []
+        self.nano_current_line = 0
+        self.nano_cursor = 0
+        self.nano_modified = False
+        self.nano_asking_exit = False
+        
         try:
             pi_home = pwd.getpwnam('pi').pw_dir
             self.working_dir = pi_home
         except:
-            self.working_dir = "/home/pi"
+            self.working_dir = os.path.expanduser("~")
 
 class PocketTerminal:
     def __init__(self):
+        # Initialize LCD
         self.LCD = LCD_1in44.LCD()
         self.LCD.LCD_Init(LCD_1in44.SCAN_DIR_DFT)
         self.LCD.LCD_Clear()
         
+        # Setup GPIO
         GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BCM)
         
@@ -68,15 +81,18 @@ class PocketTerminal:
             pi_home = pwd.getpwnam('pi').pw_dir
             os.chdir(pi_home)
         except:
-            os.chdir("/home/pi")
+            os.chdir(os.path.expanduser("~"))
         
+        # State
         self.current_screen = "menu"
         self.terminal = Terminal()
         self.menu_index = 0
         
+        # Settings
         self.brightness = 100
         self.theme = "dark"
         
+        # Theme colors
         self.themes = {
             "dark": {
                 "bg": "BLACK",
@@ -113,6 +129,7 @@ class PocketTerminal:
             }
         }
         
+        # Networking
         self.available_wlans = self.detect_wlan_interfaces()
         self.current_wlan_idx = 0
         self.wlan_enabled = {}
@@ -129,14 +146,17 @@ class PocketTerminal:
             self.wifi_networks[wlan] = []
         self.check_all_wlan_status()
         
+        # Settings menu
         self.settings_menu_index = 0
         self.in_theme_select = False
         self.theme_options = ["dark", "light", "orange"]
         self.theme_select_index = 0
         self.in_brightness_adjust = False
         
+        # System info
         self.system_info = {}
         
+        # Keyboard layouts
         self.keyboard_layouts = [
             [
                 ['a','b','c','d','e','f','g','h','i','j'],
@@ -154,13 +174,15 @@ class PocketTerminal:
         
         self.keyboard_bottom_row = ['<-','->','SPC','CAPS','BSP','CLR','MORE']
         
+        # Button tracking
         self.button_prev = {}
         self.button_time = {}
         for pin in input_pins:
             self.button_prev[pin] = GPIO.HIGH
             self.button_time[pin] = 0
         
-        self.key3_press_start = 0
+        # KEY1 for shutdown/reboot
+        self.key1_press_start = 0
         self.shutdown_threshold = 5.0
         self.reboot_threshold = 0.5
         
@@ -182,7 +204,6 @@ class PocketTerminal:
         return False
     
     def detect_wlan_interfaces(self):
-        """Detect all available WLAN interfaces"""
         try:
             result = subprocess.run(['ls', '/sys/class/net/'], 
                                   capture_output=True, text=True, timeout=2)
@@ -193,13 +214,11 @@ class PocketTerminal:
             return ['wlan0']
     
     def get_current_wlan(self):
-        """Get the currently selected WLAN interface name"""
         if self.current_wlan_idx < len(self.available_wlans):
             return self.available_wlans[self.current_wlan_idx]
         return self.available_wlans[0] if self.available_wlans else 'wlan0'
     
     def check_all_wlan_status(self):
-        """Check status of all WLAN interfaces"""
         for wlan in self.available_wlans:
             try:
                 result = subprocess.run(['nmcli', 'device', 'show', wlan],
@@ -224,7 +243,6 @@ class PocketTerminal:
                 self.wifi_connected[wlan] = None
     
     def toggle_wlan(self, wlan):
-        """Toggle WiFi on/off for specific interface"""
         try:
             if self.wlan_enabled[wlan]:
                 subprocess.run(['sudo', 'nmcli', 'radio', 'wifi', 'off', 'ifname', wlan], timeout=5)
@@ -237,7 +255,6 @@ class PocketTerminal:
             pass
     
     def scan_wifi(self, wlan):
-        """Scan for WiFi networks on specific interface"""
         try:
             subprocess.run(['sudo', 'nmcli', 'device', 'wifi', 'rescan', 'ifname', wlan],
                           capture_output=True, text=True, timeout=5)
@@ -267,7 +284,6 @@ class PocketTerminal:
             self.wifi_networks[wlan] = []
     
     def connect_wifi(self, wlan, ssid, password):
-        """Connect to WiFi network"""
         try:
             subprocess.run(['sudo', 'nmcli', 'device', 'wifi', 'connect', ssid, 
                           'password', password, 'ifname', wlan], timeout=15, check=True)
@@ -277,7 +293,6 @@ class PocketTerminal:
             pass
     
     def disconnect_wifi(self, wlan):
-        """Disconnect from current WiFi network"""
         try:
             subprocess.run(['sudo', 'nmcli', 'device', 'disconnect', wlan], timeout=5)
             if self.wifi_connected[wlan]:
@@ -360,10 +375,114 @@ class PocketTerminal:
         draw.rectangle([(0, 0), (127, 10)], fill=self.get_color("title_bg"))
         draw.text((2, 1), "TERMINAL", fill=self.get_color("title_fg"))
         
-        if term.keyboard_visible:
+        # Check if in nano mode
+        if term.in_nano:
+            self.draw_nano(draw, term)
+        elif term.keyboard_visible:
             self.draw_terminal_with_keyboard(draw, term)
         else:
             self.draw_terminal_only(draw, term)
+    
+    def draw_nano(self, draw, term):
+        # Nano header
+        if term.nano_asking_exit:
+            draw.rectangle([(0, 0), (127, 10)], fill="RED")
+            draw.text((2, 1), "Exit without save?", fill="WHITE")
+        else:
+            draw.rectangle([(0, 0), (127, 10)], fill="GREEN")
+            filename_display = term.nano_filename[:13] if len(term.nano_filename) <= 13 else "..." + term.nano_filename[-10:]
+            mod_indicator = "*" if term.nano_modified else ""
+            draw.text((2, 1), f"nano {filename_display}{mod_indicator}", fill="BLACK")
+        
+        if term.nano_asking_exit:
+            # Show exit dialog
+            draw.text((2, 20), "KEY3: Exit", fill="WHITE")
+            draw.text((2, 35), "KEY2: Cancel", fill="WHITE")
+        elif term.keyboard_visible:
+            # Nano with keyboard
+            y_pos = 12
+            current_line = term.nano_lines[term.nano_current_line] if term.nano_current_line < len(term.nano_lines) else ""
+            display_text = current_line[:16].replace(' ', '_')
+            draw.text((2, y_pos), f"L{term.nano_current_line+1}:{display_text}", fill="WHITE")
+            
+            # Cursor
+            prompt_width = len(f"L{term.nano_current_line+1}:") * 6
+            cursor_x = prompt_width + 2 + (term.nano_cursor * 6)
+            draw.line([(cursor_x, y_pos), (cursor_x, y_pos+10)], fill="YELLOW", width=2)
+            
+            # Separator
+            draw.line([(0, 24), (127, 24)], fill="CYAN", width=1)
+            
+            # Draw keyboard
+            current_layout = self.keyboard_layouts[term.kb_page]
+            
+            y_kb = 26
+            for r, row in enumerate(current_layout):
+                x_kb = 2
+                for c, key in enumerate(row):
+                    key_width = 11
+                    
+                    display_key = key
+                    if term.caps_lock and key.isalpha():
+                        display_key = key.upper()
+                    
+                    if r == term.kb_row and c == term.kb_col:
+                        draw.rectangle([(x_kb, y_kb), (x_kb+key_width, y_kb+13)], 
+                                     fill=self.get_color("select_bg"))
+                        draw.text((x_kb+3, y_kb+2), display_key, fill=self.get_color("select_fg"))
+                    else:
+                        draw.rectangle([(x_kb, y_kb), (x_kb+key_width, y_kb+13)], 
+                                     outline=self.get_color("fg"))
+                        draw.text((x_kb+3, y_kb+2), display_key, fill=self.get_color("fg"))
+                    
+                    x_kb += key_width + 1
+                y_kb += 14
+            
+            # Bottom row
+            y_bottom = 82
+            x_kb = 0
+            for i, key in enumerate(self.keyboard_bottom_row):
+                if key in ['SPC', 'CAPS', 'BSP', 'CLR', 'MORE']:
+                    key_width = 17
+                else:
+                    key_width = 14
+                
+                if key == 'CAPS' and term.caps_lock:
+                    draw.rectangle([(x_kb, y_bottom), (x_kb+key_width, y_bottom+14)], 
+                                 fill="GREEN")
+                    draw.text((x_kb+2, y_bottom+2), key, fill="BLACK")
+                elif term.kb_row == 4 and term.kb_col == i:
+                    draw.rectangle([(x_kb, y_bottom), (x_kb+key_width, y_bottom+14)], 
+                                 fill=self.get_color("select_bg"))
+                    draw.text((x_kb+2, y_bottom+2), key, fill=self.get_color("select_fg"))
+                else:
+                    draw.rectangle([(x_kb, y_bottom), (x_kb+key_width, y_bottom+14)], 
+                                 outline=self.get_color("fg"))
+                    draw.text((x_kb+2, y_bottom+2), key, fill=self.get_color("fg"))
+                
+                x_kb += key_width + 1
+        else:
+            # Nano without keyboard - show file content
+            y_pos = 12
+            # Show 8 lines starting from current line
+            start_line = max(0, term.nano_current_line - 3)
+            end_line = min(len(term.nano_lines), start_line + 8)
+            
+            for i in range(start_line, end_line):
+                line_text = term.nano_lines[i] if i < len(term.nano_lines) else ""
+                display_text = line_text[:21]
+                
+                # Highlight current line
+                if i == term.nano_current_line:
+                    draw.rectangle([(0, y_pos), (127, y_pos+12)], fill="DARKGRAY")
+                    draw.text((2, y_pos), display_text, fill="YELLOW")
+                else:
+                    draw.text((2, y_pos), display_text, fill="WHITE")
+                y_pos += 13
+            
+            # Bottom help
+            draw.rectangle([(0, 115), (127, 127)], fill="DARKGRAY")
+            draw.text((2, 117), "Joy:Edit K3:Save", fill="WHITE")
     
     def draw_terminal_only(self, draw, term):
         max_lines = 6
@@ -764,19 +883,20 @@ class PocketTerminal:
     def handle_input(self):
         current_time = time.time()
         
-        if GPIO.input(KEY3_PIN) == GPIO.LOW:
-            if self.key3_press_start == 0:
-                self.key3_press_start = current_time
-            elif current_time - self.key3_press_start >= self.shutdown_threshold:
+        # KEY1 for shutdown/reboot (WORKS EVERYWHERE)
+        if GPIO.input(KEY1_PIN) == GPIO.LOW:
+            if self.key1_press_start == 0:
+                self.key1_press_start = current_time
+            elif current_time - self.key1_press_start >= self.shutdown_threshold:
                 self.shutdown_pi()
                 return
         else:
-            if self.key3_press_start > 0:
-                press_duration = current_time - self.key3_press_start
+            if self.key1_press_start > 0:
+                press_duration = current_time - self.key1_press_start
                 if press_duration >= self.reboot_threshold and press_duration < self.shutdown_threshold:
-                    if self.current_screen == "menu":
-                        self.reboot_pi()
-                self.key3_press_start = 0
+                    self.reboot_pi()
+                    return
+                self.key1_press_start = 0
         
         if self.current_screen == "menu":
             self.handle_menu_input()
@@ -820,10 +940,173 @@ class PocketTerminal:
     def handle_terminal_input(self):
         term = self.terminal
         
-        if term.keyboard_visible:
+        # Check if in nano mode
+        if term.in_nano:
+            self.handle_nano_input(term)
+        elif term.keyboard_visible:
             self.handle_keyboard_input()
         else:
             self.handle_terminal_mode_input()
+    
+    def handle_nano_input(self, term):
+        """Handle input when in nano mode"""
+        
+        if term.nano_asking_exit:
+            # In exit dialog
+            if self.button_pressed(KEY3_PIN, 0.2):
+                # Exit without saving
+                term.in_nano = False
+                term.nano_asking_exit = False
+                self.draw_screen()
+            elif self.button_pressed(KEY2_PIN, 0.2):
+                # Cancel - go back to editing
+                term.nano_asking_exit = False
+                self.draw_screen()
+        
+        elif term.keyboard_visible:
+            # Keyboard mode in nano
+            if self.button_pressed(KEY3_PIN, 0.18):
+                if term.kb_row == 4:
+                    key = self.keyboard_bottom_row[term.kb_col]
+                else:
+                    current_layout = self.keyboard_layouts[term.kb_page]
+                    key = current_layout[term.kb_row][term.kb_col]
+                
+                # Ensure current line exists
+                while len(term.nano_lines) <= term.nano_current_line:
+                    term.nano_lines.append("")
+                
+                current_line = term.nano_lines[term.nano_current_line]
+                
+                if key == 'SPC':
+                    term.nano_lines[term.nano_current_line] = current_line[:term.nano_cursor] + ' ' + current_line[term.nano_cursor:]
+                    term.nano_cursor += 1
+                    term.nano_modified = True
+                elif key == 'CAPS':
+                    term.caps_lock = not term.caps_lock
+                elif key == 'BSP':
+                    if term.nano_cursor > 0:
+                        term.nano_lines[term.nano_current_line] = current_line[:term.nano_cursor-1] + current_line[term.nano_cursor:]
+                        term.nano_cursor -= 1
+                        term.nano_modified = True
+                elif key == 'CLR':
+                    term.nano_lines[term.nano_current_line] = ""
+                    term.nano_cursor = 0
+                    term.nano_modified = True
+                elif key == '<-':
+                    term.nano_cursor = max(0, term.nano_cursor - 1)
+                elif key == '->':
+                    term.nano_cursor = min(len(current_line), term.nano_cursor + 1)
+                elif key == 'MORE':
+                    term.kb_page = 1 - term.kb_page
+                    term.kb_row = 0
+                    term.kb_col = 0
+                else:
+                    if term.caps_lock and key.isalpha():
+                        key = key.upper()
+                    term.nano_lines[term.nano_current_line] = current_line[:term.nano_cursor] + key + current_line[term.nano_cursor:]
+                    term.nano_cursor += 1
+                    term.nano_modified = True
+                
+                self.draw_screen()
+            
+            elif self.button_pressed(KEY_PRESS_PIN, 0.15):
+                term.keyboard_visible = False
+                self.draw_screen()
+            
+            elif self.button_pressed(KEY_UP_PIN, 0.12):
+                term.kb_row = max(0, term.kb_row - 1)
+                if term.kb_row < 4:
+                    term.kb_col = min(term.kb_col, len(self.keyboard_layouts[term.kb_page][term.kb_row]) - 1)
+                else:
+                    term.kb_col = min(term.kb_col, len(self.keyboard_bottom_row) - 1)
+                self.draw_screen()
+            
+            elif self.button_pressed(KEY_DOWN_PIN, 0.12):
+                term.kb_row = min(4, term.kb_row + 1)
+                if term.kb_row < 4:
+                    term.kb_col = min(term.kb_col, len(self.keyboard_layouts[term.kb_page][term.kb_row]) - 1)
+                else:
+                    term.kb_col = min(term.kb_col, len(self.keyboard_bottom_row) - 1)
+                self.draw_screen()
+            
+            elif self.button_pressed(KEY_LEFT_PIN, 0.12):
+                term.kb_col = max(0, term.kb_col - 1)
+                self.draw_screen()
+            
+            elif self.button_pressed(KEY_RIGHT_PIN, 0.12):
+                if term.kb_row < 4:
+                    term.kb_col = min(len(self.keyboard_layouts[term.kb_page][term.kb_row]) - 1, term.kb_col + 1)
+                else:
+                    term.kb_col = min(len(self.keyboard_bottom_row) - 1, term.kb_col + 1)
+                self.draw_screen()
+        
+        else:
+            # Nano normal mode (viewing/navigating)
+            if self.button_pressed(KEY_PRESS_PIN, 0.15):
+                # Open keyboard to edit current line
+                term.keyboard_visible = True
+                term.kb_row = 0
+                term.kb_col = 0
+                # Set cursor to end of line
+                if term.nano_current_line < len(term.nano_lines):
+                    term.nano_cursor = len(term.nano_lines[term.nano_current_line])
+                else:
+                    term.nano_cursor = 0
+                self.draw_screen()
+            
+            elif self.button_pressed(KEY_UP_PIN, 0.15):
+                # Move to previous line
+                if term.nano_current_line > 0:
+                    term.nano_current_line -= 1
+                    # Adjust cursor if line is shorter
+                    if term.nano_current_line < len(term.nano_lines):
+                        term.nano_cursor = min(term.nano_cursor, len(term.nano_lines[term.nano_current_line]))
+                    self.draw_screen()
+            
+            elif self.button_pressed(KEY_DOWN_PIN, 0.15):
+                # Move to next line (create if needed)
+                term.nano_current_line += 1
+                while len(term.nano_lines) <= term.nano_current_line:
+                    term.nano_lines.append("")
+                term.nano_cursor = min(term.nano_cursor, len(term.nano_lines[term.nano_current_line]))
+                self.draw_screen()
+            
+            elif self.button_pressed(KEY3_PIN, 0.2):
+                # Save and exit
+                self.nano_save_and_exit(term)
+            
+            elif self.button_pressed(KEY2_PIN, 0.2):
+                # Ask to exit without saving
+                if term.nano_modified:
+                    term.nano_asking_exit = True
+                    self.draw_screen()
+                else:
+                    # No modifications, just exit
+                    term.in_nano = False
+                    self.draw_screen()
+    
+    def nano_save_and_exit(self, term):
+        """Save nano file and exit"""
+        try:
+            # Get full path
+            if term.nano_filename.startswith('/'):
+                filepath = term.nano_filename
+            else:
+                filepath = os.path.join(term.working_dir, term.nano_filename)
+            
+            # Only save if modified or if new file with content
+            if term.nano_modified or (not os.path.exists(filepath) and any(line.strip() for line in term.nano_lines)):
+                with open(filepath, 'w') as f:
+                    f.write('\n'.join(term.nano_lines))
+                term.output_lines.append(f"Saved: {term.nano_filename[:14]}")
+            
+            term.in_nano = False
+            self.draw_screen()
+        except Exception as e:
+            term.output_lines.append(f"Save error: {str(e)[:10]}")
+            term.in_nano = False
+            self.draw_screen()
     
     def handle_keyboard_input(self):
         term = self.terminal
@@ -856,7 +1139,6 @@ class PocketTerminal:
                 term.kb_row = 0
                 term.kb_col = 0
             else:
-                # Apply caps lock to letters only
                 if term.caps_lock and key.isalpha():
                     key = key.upper()
                 term.command_input = term.command_input[:term.cursor_pos] + key + term.command_input[term.cursor_pos:]
@@ -1157,7 +1439,22 @@ class PocketTerminal:
         
         cmd = term.command_input.strip()
         
-        term.output_lines.append(f"{self.username}$ {cmd}"[:21])
+        # Get path display
+        try:
+            pi_home = pwd.getpwnam('pi').pw_dir
+        except:
+            pi_home = os.path.expanduser("~")
+        
+        cwd = term.working_dir
+        if cwd == pi_home:
+            path_display = "~"
+        elif cwd.startswith(pi_home + "/"):
+            path_display = "~/" + cwd[len(pi_home)+1:]
+        else:
+            path_display = cwd
+        
+        term.output_lines.append(f"{self.username}@pi:{path_display}"[:21])
+        term.output_lines.append(f"$ {cmd}"[:21])
         term.command_history.append(cmd)
         term.history_index = -1
         term.scroll_offset = 0
@@ -1167,10 +1464,42 @@ class PocketTerminal:
             if not parts:
                 return
             
-            if parts[0] == 'cd':
-                try:
-                    pi_home = pwd.getpwnam('pi').pw_dir
+            # Built-in: nano
+            if parts[0] == 'nano':
+                if len(parts) < 2:
+                    term.output_lines.append("Usage: nano <file>")
+                else:
+                    filename = parts[1]
+                    # Get full path
+                    if filename.startswith('/'):
+                        filepath = filename
+                    else:
+                        filepath = os.path.join(term.working_dir, filename)
                     
+                    term.nano_filename = filename
+                    term.nano_current_line = 0
+                    term.nano_cursor = 0
+                    term.nano_modified = False
+                    term.nano_asking_exit = False
+                    
+                    # Load file if exists
+                    if os.path.exists(filepath):
+                        try:
+                            with open(filepath, 'r') as f:
+                                term.nano_lines = f.read().splitlines()
+                            if not term.nano_lines:
+                                term.nano_lines = [""]
+                        except:
+                            term.nano_lines = [""]
+                    else:
+                        term.nano_lines = [""]
+                    
+                    term.in_nano = True
+                    term.keyboard_visible = False
+            
+            # Built-in: cd
+            elif parts[0] == 'cd':
+                try:
                     if len(parts) > 1:
                         target = parts[1]
                         if target.startswith('/'):
@@ -1184,25 +1513,28 @@ class PocketTerminal:
                         
                         os.chdir(new_dir)
                         term.working_dir = os.getcwd()
-                        term.output_lines.append(f"-> {term.working_dir[:18]}")
                     else:
                         os.chdir(pi_home)
                         term.working_dir = os.getcwd()
-                        term.output_lines.append("-> ~")
                 except FileNotFoundError:
-                    term.output_lines.append(f"No dir: {parts[1][:12]}")
+                    term.output_lines.append(f"cd: {parts[1]}: No such")
+                    term.output_lines.append("file or directory")
                 except Exception as e:
-                    term.output_lines.append(f"Err: {str(e)[:15]}")
+                    term.output_lines.append(f"cd: {str(e)[:15]}")
             
+            # Built-in: clear
             elif cmd == 'clear':
                 term.output_lines = []
             
+            # Built-in: pwd
             elif cmd == 'pwd':
                 term.output_lines.append(term.working_dir[:21])
             
+            # Built-in: exit
             elif cmd == 'exit':
                 self.current_screen = "menu"
             
+            # Execute other commands
             else:
                 master, slave = pty.openpty()
                 term.pty_master = master
@@ -1235,56 +1567,75 @@ class PocketTerminal:
         term.keyboard_visible = False
     
     def read_pty_output(self, term):
-        buffer = ""
-        
-        while term.process and term.process.poll() is None:
-            try:
-                data = os.read(term.pty_master, 1024).decode('utf-8', errors='ignore')
-                buffer += data
-                
-                while '\n' in buffer or '\r' in buffer:
-                    if '\n' in buffer:
-                        line, buffer = buffer.split('\n', 1)
-                    else:
-                        line, buffer = buffer.split('\r', 1)
-                    
-                    line = line.strip()
-                    if line:
-                        while len(line) > 21:
-                            term.output_lines.append(line[:21])
-                            line = line[21:]
-                        if line:
-                            term.output_lines.append(line)
-                        
-                        self.needs_redraw = True
-                
-                time.sleep(0.05)
-            except OSError:
-                time.sleep(0.05)
-            except:
-                break
-        
-        if buffer.strip():
-            lines = buffer.strip().split('\n')
-            for line in lines:
-                if line.strip():
-                    term.output_lines.append(line.strip()[:21])
-        
-        if term.process:
-            returncode = term.process.poll()
-            if returncode == 0:
-                term.output_lines.append("Done!")
-            elif returncode is not None:
-                term.output_lines.append(f"Exit:{returncode}")
-        
+        """Read PTY output and display it in real-time"""
         try:
-            os.close(term.pty_master)
-        except:
-            pass
-        
-        term.process = None
-        term.pty_master = None
-        self.needs_redraw = True
+            while term.process and term.process.poll() is None:
+                try:
+                    # Use select to check if data is available
+                    ready, _, _ = select.select([term.pty_master], [], [], 0.1)
+                    
+                    if ready:
+                        data = os.read(term.pty_master, 4096).decode('utf-8', errors='ignore')
+                        
+                        if data:
+                            # Process each line
+                            lines = data.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+                            
+                            for line in lines:
+                                if line:  # Only add non-empty lines
+                                    # Split long lines into chunks of 21 chars
+                                    while len(line) > 21:
+                                        term.output_lines.append(line[:21])
+                                        line = line[21:]
+                                    if line:
+                                        term.output_lines.append(line)
+                            
+                            self.needs_redraw = True
+                    else:
+                        time.sleep(0.05)
+                        
+                except OSError as e:
+                    if e.errno == 5:  # Input/output error - process ended
+                        break
+                    time.sleep(0.05)
+                except Exception:
+                    time.sleep(0.05)
+            
+            # After process ends, try to read any remaining output
+            time.sleep(0.1)
+            try:
+                while True:
+                    ready, _, _ = select.select([term.pty_master], [], [], 0.1)
+                    if ready:
+                        data = os.read(term.pty_master, 4096).decode('utf-8', errors='ignore')
+                        if not data:
+                            break
+                        
+                        lines = data.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+                        for line in lines:
+                            if line:
+                                while len(line) > 21:
+                                    term.output_lines.append(line[:21])
+                                    line = line[21:]
+                                if line:
+                                    term.output_lines.append(line)
+                    else:
+                        break
+            except:
+                pass
+            
+            try:
+                os.close(term.pty_master)
+            except:
+                pass
+            
+            term.process = None
+            term.pty_master = None
+            self.needs_redraw = True
+            
+        except Exception as e:
+            print(f"PTY read error: {e}")
+            term.process = None
     
     def shutdown_pi(self):
         print("\n!!! SHUTDOWN !!!")
